@@ -13,8 +13,10 @@ import plotly.express as px
 from typing import List, Dict, Tuple
 import numpy as np
 import speech_recognition as sr
-import threading
-import queue
+import tempfile
+import wave
+from pydub import AudioSegment
+import os
 
 # Hardcoded data for all platforms and resources
 class CareerData:
@@ -683,7 +685,6 @@ class CareerData:
             {
                 "name": "Indeed Internships",
                 "logo": "🌐",
-                "rating": "⭐ 4.5/5",
                 "description": "Easy & quick apply with direct company postings",
                 "features": ["Easy apply", "Direct company postings", "Wide availability"],
                 "url": "https://indeed.com/q-internship-jobs.html",
@@ -707,11 +708,12 @@ class CareerData:
             }
         ]
 
-# Gemini AI Integration
+# Gemini AI Integration with Speech Recognition
 class CareerMasterAI:
     def __init__(self, api_key):
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel("models/gemma-3-4b-it")
+        self.recognizer = sr.Recognizer()
     
     def analyze_resume(self, resume_text, job_description=""):
         prompt = f"""
@@ -1023,33 +1025,42 @@ class CareerMasterAI:
             return response.text
         except Exception as e:
             return f"Error: {str(e)}"
+    
+    def process_voice_input(self, audio_bytes):
+        """Convert audio bytes to text using speech recognition"""
+        try:
+            # Create a temporary file for the audio
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio:
+                temp_audio.write(audio_bytes)
+                temp_audio_path = temp_audio.name
+            
+            # Use speech recognition
+            with sr.AudioFile(temp_audio_path) as source:
+                # Adjust for ambient noise
+                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                # Listen to the audio file
+                audio_data = self.recognizer.record(source)
+                
+                # Try Google Speech Recognition
+                try:
+                    text = self.recognizer.recognize_google(audio_data)
+                    return text, "✅ Voice recognized successfully"
+                except sr.UnknownValueError:
+                    return "", "❌ Could not understand audio"
+                except sr.RequestError as e:
+                    return "", f"❌ Speech recognition service error: {e}"
+                finally:
+                    # Clean up temp file
+                    if os.path.exists(temp_audio_path):
+                        os.unlink(temp_audio_path)
+                        
+        except Exception as e:
+            return "", f"❌ Error processing audio: {str(e)}"
 
 # Initialize data
 career_data = CareerData()
 
-# Speech Recognition Queue
-speech_queue = queue.Queue()
-
-# Speech Recognition Worker
-def speech_recognition_worker(audio_data, status_queue):
-    """Worker function for speech recognition"""
-    try:
-        recognizer = sr.Recognizer()
-        
-        # Convert audio data to AudioData object
-        audio = sr.AudioData(audio_data, 44100, 2)
-        
-        # Recognize speech using Google Web Speech API
-        text = recognizer.recognize_google(audio)
-        status_queue.put(("success", text))
-    except sr.UnknownValueError:
-        status_queue.put(("error", "Could not understand audio"))
-    except sr.RequestError as e:
-        status_queue.put(("error", f"Speech recognition error: {str(e)}"))
-    except Exception as e:
-        status_queue.put(("error", f"Error: {str(e)}"))
-
-# Enhanced Custom CSS with ALL headers in bold black and voice mode styling
+# Enhanced Custom CSS with SELECTIVE black text (preserving special elements)
 custom_css = """
 :root {
     --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -1061,185 +1072,166 @@ custom_css = """
     --hover-shadow: 0 30px 60px rgba(0,0,0,0.15);
 }
 
+/* ==================== SELECTIVE BLACK TEXT (MAIN CONTENT) ==================== */
+/* Force black text for main content areas but preserve special elements */
+body, .gradio-container, .gr-container, .gr-box, .gr-panel, .gr-form {
+    color: #000000 !important;
+}
+
+/* Main text elements - black by default */
+p:not(.stat-label):not(.chatbot-header):not(.youtube-link):not(.badge):not(.user-message):not(.bot-message),
+div:not(.stat-number):not(.progress-fill):not(.badge):not(.skill-badge):not(.platform-badge):not(.user-message):not(.bot-message):not(.chatbot-header):not(.gr-header):not(.gr-header *),
+span:not(.stat-number):not(.badge):not(.skill-badge):not(.platform-badge):not(.user-message *):not(.bot-message *):not(.chatbot-header *):not(.gr-header *) {
+    color: #000000 !important;
+}
+
+/* Headers - black and bold */
+h1:not(.gr-header h1), 
+h2:not(.gr-header h2), 
+h3:not(.gr-header h3), 
+h4:not(.gr-header h4), 
+h5:not(.gr-header h5), 
+h6:not(.gr-header h6) {
+    color: #000000 !important;
+    font-weight: 800 !important;
+}
+
+/* Labels - black and bold */
+label, .gr-label, .form-label {
+    color: #000000 !important;
+    font-weight: 700 !important;
+}
+
+/* ================= TAB TEXT FORCE BLACK (EMOJI + TEXT) ================= */
+
+/* All tab buttons */
+.gr-tabs button,
+.gr-tabs button span,
+.gr-tabs button span * {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    font-weight: 700 !important;
+}
+
+/* Selected tab */
+.gr-tabs button.selected,
+.gr-tabs button.selected span,
+.gr-tabs button.selected span * {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    font-weight: 800 !important;
+}
+
+/* Tab background */
+.gr-tabs button {
+    background: #e5e7eb !important;
+}
+
+.gr-tabs button.selected {
+    background: #c7d2fe !important;
+}
+
+/* Hover */
+.gr-tabs button:hover {
+    background: #dbeafe !important;
+}
+
+
+/* ==================== PRESERVED SPECIAL ELEMENTS ==================== */
+/* Header - WHITE text */
+.gr-header,
+.gr-header *,
+.gr-header h1,
+.gr-header h2,
+.gr-header h3,
+.gr-header p {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+}
+
+/* Stat numbers - GRADIENT text */
+.stat-number {
+    background: var(--primary-gradient) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+    font-size: 3.5rem !important;
+    font-weight: 800 !important;
+}
+
+/* Badges - WHITE text */
+.badge, 
+.skill-badge, 
+.platform-badge {
+    color: white !important;
+    -webkit-text-fill-color: white !important;
+}
+
+/* YouTube links - WHITE text */
+.youtube-link,
+.youtube-link * {
+    color: white !important;
+    -webkit-text-fill-color: white !important;
+}
+
+/* Chatbot header - WHITE text */
+.chatbot-header,
+.chatbot-header * {
+    color: white !important;
+    -webkit-text-fill-color: white !important;
+}
+
+/* Chat messages */
+.user-message,
+.user-message * {
+    color: white !important;
+    -webkit-text-fill-color: white !important;
+}
+
+.bot-message,
+.bot-message * {
+    color: #1e293b !important;
+    -webkit-text-fill-color: #1e293b !important;
+}
+
+/* Button text on gradient backgrounds */
+.quick-start-btn,
+.platform-btn,
+.nav-btn,
+.gr-button-primary,
+.gr-button-secondary,
+.voice-btn {
+    color: white !important;
+    -webkit-text-fill-color: white !important;
+}
+
+.quick-start-btn *,
+.platform-btn *,
+.nav-btn *,
+.gr-button-primary *,
+.gr-button-secondary *,
+.voice-btn * {
+    color: white !important;
+    -webkit-text-fill-color: white !important;
+}
+
+/* ==================== REST OF YOUR CSS (UNCHANGED) ==================== */
+/* Main container */
 .gradio-container {
     background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%) !important;
     font-family: 'Inter', 'Segoe UI', system-ui, sans-serif !important;
     min-height: 100vh;
 }
 
-/* ALL HEADERS IN BOLD BLACK - NO EXCEPTIONS */
-h1, h2, h3, h4, h5, h6 {
-    color: #000000 !important;
-    font-weight: 800 !important;
-    background: none !important;
-    -webkit-text-fill-color: #000000 !important;
-    margin: 0 0 20px 0 !important;
-    line-height: 1.3 !important;
-}
-
 h1 { 
     font-size: 3.5rem !important; 
-    color: #000000 !important;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
 }
-h2 { 
-    font-size: 2.5rem !important; 
-    color: #000000 !important;
-}
-h3 { 
-    font-size: 2rem !important; 
-    color: #000000 !important;
-}
-h4 { 
-    font-size: 1.5rem !important; 
-    color: #000000 !important;
-}
-h5 { 
-    font-size: 1.25rem !important; 
-    color: #000000 !important;
-}
-h6 { 
-    font-size: 1.1rem !important; 
-    color: #000000 !important;
-}
-
-/* ALL MARKDOWN HEADERS IN BOLD BLACK */
-.gr-markdown h1,
-.gr-markdown h2,
-.gr-markdown h3,
-.gr-markdown h4,
-.gr-markdown h5,
-.gr-markdown h6 {
-    color: #000000 !important;
-    font-weight: 800 !important;
-    background: none !important;
-    -webkit-text-fill-color: #000000 !important;
-}
-
-/* ==================== FIX FOR TAB TEXT - MAKE ALL TAB TEXT VISIBLE ==================== */
-/* Selected tabs - WHITE TEXT for visibility on colored background */
-.gr-tabs .gr-tabs-nav button.selected,
-.gr-tabs .tab-nav button.selected,
-.gr-tabs .tab-button.selected,
-.gr-tabs .gr-tabs-nav button.selected span,
-.gr-tabs .tab-nav button.selected span,
-.gr-tabs .tab-button.selected span {
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
-    background: var(--primary-gradient) !important;
-    font-weight: 800 !important;
-    border-color: transparent !important;
-    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.3) !important;
-}
-
-/* Unselected tabs - BLACK TEXT */
-.gr-tabs .gr-tabs-nav button:not(.selected),
-.gr-tabs .tab-nav button:not(.selected),
-.gr-tabs .tab-button:not(.selected),
-.gr-tabs .gr-tabs-nav button:not(.selected) span,
-.gr-tabs .tab-nav button:not(.selected) span,
-.gr-tabs .tab-button:not(.selected) span {
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-    background: rgba(102, 126, 234, 0.1) !important;
-    opacity: 1 !important;
-    text-shadow: none !important;
-    font-weight: 700 !important;
-}
-
-/* Hover state - keep black text */
-.gr-tabs .gr-tabs-nav button:hover,
-.gr-tabs .tab-nav button:hover,
-.gr-tabs .tab-button:hover,
-.gr-tabs .gr-tabs-nav button:hover span,
-.gr-tabs .tab-nav button:hover span,
-.gr-tabs .tab-button:hover span {
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-    background: rgba(102, 126, 234, 0.2) !important;
-    border-color: rgba(102, 126, 234, 0.3) !important;
-}
-
-/* Tab container */
-.gr-tabs {
-    background: white !important;
-    border-radius: 20px !important;
-    padding: 20px !important;
-    margin: 20px 0 !important;
-    box-shadow: var(--card-shadow) !important;
-}
-
-/* Tab navigation area */
-.gr-tabs .gr-tabs-nav,
-.gr-tabs .tab-nav {
-    display: flex !important;
-    gap: 10px !important;
-    margin-bottom: 20px !important;
-    flex-wrap: wrap !important;
-    padding: 10px !important;
-    background: #f8fafc !important;
-    border-radius: 15px !important;
-    border: 2px solid #e2e8f0 !important;
-}
-
-/* Individual tab buttons */
-.gr-tabs .gr-tabs-nav button,
-.gr-tabs .tab-nav button,
-.tab-button {
-    background: rgba(102, 126, 234, 0.1) !important;
-    border: 2px solid transparent !important;
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-    padding: 12px 24px !important;
-    border-radius: 10px !important;
-    font-weight: 700 !important;
-    transition: all 0.3s ease !important;
-    flex: 1 !important;
-    min-width: 120px !important;
-    text-align: center !important;
-    font-size: 16px !important;
-}
-
-.tab-button:hover {
-    background: rgba(102, 126, 234, 0.2) !important;
-    transform: translateY(-2px) !important;
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-    border-color: rgba(102, 126, 234, 0.3) !important;
-}
-
-.tab-button.selected {
-    background: var(--primary-gradient) !important;
-    color: white !important;
-    -webkit-text-fill-color: white !important;
-    border-color: transparent !important;
-    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.3) !important;
-}
-
-/* Dashboard Progress text in black */
-.progress-dashboard,
-.progress-dashboard *,
-.progress-label,
-.progress-label span,
-.progress-bar-container,
-.progress-fill,
-.feature-card h3,
-.feature-card h4,
-.stat-card div,
-.stat-number,
-.role-card h4,
-.role-card p,
-.resource-card h4,
-.roadmap-container h3,
-.roadmap-phase h4,
-.interview-container h3,
-.interview-question,
-.interview-answer,
-.evaluation-result,
-.chatbot-header {
-    color: #000000 !important;
-    font-weight: 600 !important;
-}
+h2 { font-size: 2.5rem !important; }
+h3 { font-size: 2rem !important; }
+h4 { font-size: 1.5rem !important; }
+h5 { font-size: 1.25rem !important; }
+h6 { font-size: 1.1rem !important; }
 
 /* Header */
 .gr-header {
@@ -1247,26 +1239,10 @@ h6 {
     border-radius: 20px !important;
     padding: 40px 30px !important;
     margin-bottom: 30px !important;
-    color: white !important;
     box-shadow: var(--card-shadow) !important;
     text-align: center;
     position: relative;
     overflow: hidden;
-}
-
-.gr-header h1 {
-    color: #ffffff !important;
-    font-weight: 900 !important;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
-    margin-bottom: 15px !important;
-}
-
-.gr-header p {
-    color: rgba(255, 255, 255, 0.9) !important;
-    font-size: 1.3rem !important;
-    max-width: 1000px !important;
-    margin: 0 auto !important;
-    font-weight: 600 !important;
 }
 
 .gr-header::before {
@@ -1337,16 +1313,6 @@ h6 {
     border-color: rgba(102, 126, 234, 0.2) !important;
 }
 
-.stat-number {
-    font-size: 3.5rem !important;
-    font-weight: 800 !important;
-    background: var(--primary-gradient) !important;
-    -webkit-background-clip: text !important;
-    -webkit-text-fill-color: transparent !important;
-    margin: 10px 0 !important;
-    line-height: 1 !important;
-}
-
 /* Progress Dashboard */
 .progress-dashboard {
     background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.9) 100%) !important;
@@ -1365,7 +1331,6 @@ h6 {
     justify-content: space-between !important;
     margin-bottom: 8px !important;
     font-weight: 600 !important;
-    color: #000000 !important;
 }
 
 .progress-bar {
@@ -1454,13 +1419,6 @@ h6 {
     -webkit-text-fill-color: transparent !important;
 }
 
-.role-card h4 {
-    margin: 0 !important;
-    font-size: 1.5rem !important;
-    color: #000000 !important;
-    font-weight: 700 !important;
-}
-
 /* Roadmap */
 .roadmap-container {
     background: white !important;
@@ -1489,7 +1447,6 @@ h6 {
 
 .chatbot-header {
     background: var(--primary-gradient) !important;
-    color: white !important;
     padding: 20px !important;
     text-align: center !important;
     font-weight: 700 !important;
@@ -1519,14 +1476,12 @@ h6 {
 
 .user-message {
     background: var(--primary-gradient) !important;
-    color: white !important;
     margin-left: auto !important;
     border-bottom-right-radius: 5px !important;
 }
 
 .bot-message {
     background: #f1f5f9 !important;
-    color: #1e293b !important;
     margin-right: auto !important;
     border-bottom-left-radius: 5px !important;
 }
@@ -1550,7 +1505,6 @@ h6 {
 
 .voice-btn {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    color: white !important;
     border: none !important;
     border-radius: 50px !important;
     padding: 12px 24px !important;
@@ -1566,6 +1520,7 @@ h6 {
 .voice-btn:hover {
     transform: translateY(-3px) !important;
     box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3) !important;
+    font-weight: 800 !important;
 }
 
 .voice-btn.recording {
@@ -1576,7 +1531,6 @@ h6 {
 .voice-status {
     text-align: center !important;
     font-weight: 600 !important;
-    color: #000000 !important;
     margin-top: 10px !important;
 }
 
@@ -1595,7 +1549,6 @@ h6 {
 .badge {
     display: inline-block !important;
     background: var(--primary-gradient) !important;
-    color: white !important;
     padding: 6px 16px !important;
     border-radius: 20px !important;
     font-size: 12px !important;
@@ -1609,7 +1562,6 @@ h6 {
 .skill-badge {
     display: inline-block !important;
     background: var(--success-gradient) !important;
-    color: white !important;
     padding: 4px 12px !important;
     border-radius: 12px !important;
     font-size: 11px !important;
@@ -1620,7 +1572,6 @@ h6 {
 .platform-badge {
     display: inline-block !important;
     background: var(--warning-gradient) !important;
-    color: white !important;
     padding: 4px 10px !important;
     border-radius: 10px !important;
     font-size: 10px !important;
@@ -1628,11 +1579,61 @@ h6 {
     font-weight: 600 !important;
 }
 
-/* Buttons */
+/* Button Styles */
+.quick-start-btn {
+    border: none !important;
+    padding: 15px !important;
+    border-radius: 10px !important;
+    cursor: pointer !important;
+    text-align: center !important;
+    transition: all 0.3s ease !important;
+    width: 100%;
+    font-weight: 600 !important;
+}
+
+.quick-start-btn:hover {
+    transform: translateY(-3px) !important;
+    font-weight: 800 !important;
+}
+
+/* Platform buttons */
+.platform-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: all 0.3s ease;
+}
+
+.platform-btn:hover {
+    transform: translateY(-3px);
+    font-weight: 800 !important;
+}
+
+/* Navigation buttons */
+.nav-btn {
+    border: none;
+    padding: 15px;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+.nav-btn:hover {
+    transform: translateY(-3px);
+    font-weight: 800 !important;
+}
+
+/* Gradio primary buttons */
 .gr-button-primary {
     background: var(--primary-gradient) !important;
     border: none !important;
-    color: white !important;
     font-weight: 700 !important;
     padding: 16px 32px !important;
     border-radius: 12px !important;
@@ -1645,12 +1646,12 @@ h6 {
 .gr-button-primary:hover {
     transform: translateY(-3px) !important;
     box-shadow: 0 15px 30px rgba(102, 126, 234, 0.4) !important;
+    font-weight: 800 !important;
 }
 
 .gr-button-secondary {
     background: var(--secondary-gradient) !important;
     border: none !important;
-    color: white !important;
     font-weight: 700 !important;
     padding: 16px 32px !important;
     border-radius: 12px !important;
@@ -1660,22 +1661,78 @@ h6 {
 .gr-button-secondary:hover {
     transform: translateY(-3px) !important;
     box-shadow: 0 15px 30px rgba(245, 87, 108, 0.4) !important;
+    font-weight: 800 !important;
+}
+
+/* YouTube link styling */
+.youtube-link {
+    display: inline-flex;
+    align-items: center;
+    background: #FF0000;
+    padding: 8px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    margin: 5px;
+    transition: all 0.3s ease;
+}
+
+.youtube-link:hover {
+    background: #CC0000;
+    transform: translateY(-2px);
+    font-weight: 800 !important;
+}
+
+.youtube-link i {
+    margin-right: 8px;
+}
+
+/* Resource card styling */
+.resource-card {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    margin: 15px 0;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+    border-left: 4px solid #667eea;
+    transition: all 0.3s ease;
+}
+
+.resource-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
 }
 
 /* Typography */
 p {
-    color: #000000 !important;
     line-height: 1.7 !important;
     margin-bottom: 16px !important;
     font-size: 1.1rem !important;
     font-weight: 500 !important;
 }
 
+/* Tabs */
+.gr-tabs button {
+    background: rgba(102, 126, 234, 0.15) !important;
+    border-radius: 10px 10px 0 0 !important;
+    padding: 12px 24px !important;
+    font-weight: 700 !important;
+    transition: all 0.3s ease !important;
+}
+
+.gr-tabs button.selected {
+    background: var(--primary-gradient) !important;
+    font-weight: 800 !important;
+}
+
+.gr-tabs button:hover {
+    background: #000000 !important;
+}
+
 /* Footer */
 .footer {
     text-align: center !important;
     padding: 40px 20px !important;
-    color: #64748b !important;
     font-size: 14px !important;
     margin-top: 50px !important;
     border-top: 2px solid #f1f5f9 !important;
@@ -1686,7 +1743,6 @@ p {
 }
 
 .footer h3 {
-    color: #000000 !important;
     margin-bottom: 20px !important;
 }
 
@@ -1711,41 +1767,9 @@ p {
     .chatbot-container {
         height: 500px !important;
     }
-    
-    .tab-button {
-        min-width: 100px !important;
-        font-size: 14px !important;
-        padding: 10px 16px !important;
-    }
 }
 
-/* Animations */
-@keyframes pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
-}
-
-.pulse {
-    animation: pulse 2s infinite;
-}
-
-@keyframes slideIn {
-    from { transform: translateX(-20px); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-}
-
-.slide-in {
-    animation: slideIn 0.5s ease-out;
-}
-
-/* Label styling */
-label {
-    font-weight: 700 !important;
-    color: #000000 !important;
-    margin-bottom: 8px !important;
-    display: block !important;
-}
+/* ... all your existing CSS ... */
 
 /* Textbox styling */
 .gr-textbox textarea, .gr-textbox input {
@@ -1754,7 +1778,6 @@ label {
     padding: 16px !important;
     font-size: 16px !important;
     transition: all 0.3s ease !important;
-    color: #000000 !important;
 }
 
 .gr-textbox textarea:focus, .gr-textbox input:focus {
@@ -1763,52 +1786,12 @@ label {
     outline: none !important;
 }
 
-/* YouTube link styling */
-.youtube-link {
-    display: inline-flex;
-    align-items: center;
-    background: #FF0000;
-    color: white !important;
-    padding: 8px 16px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-weight: 600;
-    margin: 5px;
-    transition: all 0.3s ease;
-}
-
-.youtube-link:hover {
-    background: #CC0000;
-    transform: translateY(-2px);
-}
-
-.youtube-link i {
-    margin-right: 8px;
-}
-
-/* Resource card styling */
-.resource-card {
-    background: white;
-    border-radius: 15px;
-    padding: 20px;
-    margin: 15px 0;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.05);
-    border-left: 4px solid #667eea;
-    transition: all 0.3s ease;
-}
-
-.resource-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-}
-
-/* Dashboard Progress text in black */
-.progress-dashboard h3,
-.progress-dashboard .progress-label span,
-.progress-dashboard .stat-card div,
-.progress-dashboard .stat-number {
+/* ==================== TAB TEXT ONLY - BLACK ==================== */
+/* Target ONLY the specific tab section */
+.gr-tabs button span,
+.gr-tabs .tab-nav button span {
     color: #000000 !important;
-    font-weight: 700 !important;
+    -webkit-text-fill-color: #000000 !important;
 }
 """
 
@@ -1818,56 +1801,56 @@ def create_interface():
         # Header
         gr.Markdown("""
         <div class="gr-header">
-            <h1 style="color: #ffffff !important; font-weight: 900 !important; text-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;">🚀 Career Master</h1>
-            <p style="color: rgba(255, 255, 255, 0.95) !important; font-weight: 600 !important;">Your Complete AI-Powered Career Development Ecosystem</p>
+            <h1>🚀 Career Master</h1>
+            <p>Your Complete AI-Powered Career Development Ecosystem</p>
         </div>
         """)
         
         # Features Overview
         gr.Markdown("""
         <div class="feature-card">
-            <h2 style="color: #000000 !important; font-weight: 800 !important;">🌟  FEATURES OF CAREER MASTER </h2>
-            <p style="color: #000000 !important; font-weight: 600 !important;">All career resources in one platform - no more switching between 15+ websites</p>
+            <h2>🌟 FEATURES OF CAREER MASTER</h2>
+            <p>All career resources in one platform - no more switching between 15+ websites</p>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 30px;">
                 <div style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); padding: 20px; border-radius: 15px; border-left: 5px solid #667eea;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">🌐 Unified Career Ecosystem</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">All career resources in one platform - no more switching between 15+ websites</p>
+                    <h4>🌐 Unified Career Ecosystem</h4>
+                    <p>All career resources in one platform - no more switching between 15+ websites</p>
                 </div>
                 <div style="background: linear-gradient(135deg, rgba(240, 147, 251, 0.1), rgba(245, 87, 108, 0.1)); padding: 20px; border-radius: 15px; border-left: 5px solid #f093fb;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">🤖 AI Career Role Suggester</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">Personalized role recommendations based on skills, interests & background</p>
+                    <h4>🤖 AI Career Role Suggester</h4>
+                    <p>Personalized role recommendations based on skills, interests & background</p>
                 </div>
                 <div style="background: linear-gradient(135deg, rgba(79, 172, 254, 0.1), rgba(0, 242, 254, 0.1)); padding: 20px; border-radius: 15px; border-left: 5px solid #4facfe;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">🧭 Personalized Roadmap Generator</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">Month-by-month roadmap tailored to your career goals</p>
+                    <h4>🧭 Personalized Roadmap Generator</h4>
+                    <p>Month-by-month roadmap tailored to your career goals</p>
                 </div>
                 <div style="background: linear-gradient(135deg, rgba(246, 211, 101, 0.1), rgba(253, 160, 133, 0.1)); padding: 20px; border-radius: 15px; border-left: 5px solid #f6d365;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">📊 AI Resume Analyzer & Builder</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">ATS-optimized scoring with keyword gap detection</p>
+                    <h4>📊 AI Resume Analyzer & Builder</h4>
+                    <p>ATS-optimized scoring with keyword gap detection</p>
                 </div>
                 <div style="background: linear-gradient(135deg, rgba(255, 154, 158, 0.1), rgba(250, 208, 196, 0.1)); padding: 20px; border-radius: 15px; border-left: 5px solid #ff9a9e;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">🎤 AI Mock Interview System</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">Role-based interviews with STAR-method evaluation</p>
+                    <h4>🎤 AI Mock Interview System</h4>
+                    <p>Role-based interviews with STAR-method evaluation</p>
                 </div>
                 <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1)); padding: 20px; border-radius: 15px; border-left: 5px solid #10b981;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">📚 Free Certifications</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">Platforms for free certificates & learning paths</p>
+                    <h4>📚 Free Certifications</h4>
+                    <p>Platforms for free certificates & learning paths</p>
                 </div>
                 <div style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(217, 119, 6, 0.1)); padding: 20px; border-radius: 15px; border-left: 5px solid #f59e0b;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">💼 Job Platforms</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">Job applying platforms with ratings & features</p>
+                    <h4>💼 Job Platforms</h4>
+                    <p>Job applying platforms with ratings & features</p>
                 </div>
                 <div style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(124, 58, 237, 0.1)); padding: 20px; border-radius: 15px; border-left: 5px solid #8b5cf6;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">📝 Resume Builders</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">ATS-friendly resume builders</p>
+                    <h4>📝 Resume Builders</h4>
+                    <p>ATS-friendly resume builders</p>
                 </div>
                 <div style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.1), rgba(219, 39, 119, 0.1)); padding: 20px; border-radius: 15px; border-left: 5px solid #ec4899;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">🔍 ATS Evaluators</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">Platforms to check your resume ATS score</p>
+                    <h4>🔍 ATS Evaluators</h4>
+                    <p>Platforms to check your resume ATS score</p>
                 </div>
                 <div style="background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(8, 145, 178, 0.1)); padding: 20px; border-radius: 15px; border-left: 5px solid #06b6d4;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">🏆 Internship Platforms</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">Free internship platforms for students</p>
+                    <h4>🏆 Internship Platforms</h4>
+                    <p>Free internship platforms for students</p>
                 </div>
             </div>
         </div>
@@ -1906,7 +1889,7 @@ def create_interface():
         
         configure_btn.click(configure_api, inputs=[api_key], outputs=[api_status])
         
-        # Main Tabs
+        # Main Tabs - Text changed to BLACK
         with gr.Tabs() as tabs:
             # Dashboard
             with gr.Tab("🏠 Dashboard"):
@@ -1940,6 +1923,10 @@ def create_interface():
             with gr.Tab("🏆 Hackathons & Projects"):
                 create_hackathon_project_tab(career_ai)
             
+            # Coding Platforms
+            with gr.Tab("💻 Coding Platforms"):
+                create_coding_platforms_tab()
+            
             # Learning Progress Dashboard
             with gr.Tab("📊 Progress Tracker"):
                 create_progress_tracker_tab(career_ai)
@@ -1959,8 +1946,8 @@ def create_interface():
         # Footer
         gr.Markdown("""
         <div class="footer">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">🚀 Career Master Pro</h3>
-            <p style="color: #000000 !important; font-weight: 600 !important;">Your Complete Career Development Ecosystem</p>
+            <h3>🚀 Career Master Pro</h3>
+            <p>Your Complete Career Development Ecosystem</p>
             <p style="font-size: 12px; color: #94a3b8; font-weight: 500;">
                 © 2024 Career Master Pro • 10 Premium Features • AI Powered by Google Gemini • Made for Career Success
             </p>
@@ -1975,28 +1962,28 @@ def create_dashboard_tab(career_ai):
         gr.Markdown("""
         <div class="stats-grid">
             <div class="stat-card">
-                <div style="font-size: 2.5rem; margin-bottom: 10px; color: #000000 !important;">🌐</div>
+                <div style="font-size: 2.5rem; margin-bottom: 10px;">🌐</div>
                 <div class="stat-number">12</div>
-                <div style="font-weight: 700; color: #000000 !important; font-size: 1.1rem;">Integrated Features</div>
-                <div style="color: #000000 !important; font-size: 0.9rem; font-weight: 500;">Unified Career Platform</div>
+                <div>Integrated Features</div>
+                <div>Unified Career Platform</div>
             </div>
             <div class="stat-card">
-                <div style="font-size: 2.5rem; margin-bottom: 10px; color: #000000 !important;">💼</div>
+                <div style="font-size: 2.5rem; margin-bottom: 10px;">💼</div>
                 <div class="stat-number">20+</div>
-                <div style="font-weight: 700; color: #000000 !important; font-size: 1.1rem;">Career Roles</div>
-                <div style="color: #000000 !important; font-size: 0.9rem; font-weight: 500;">With YouTube Learning Links</div>
+                <div>Career Roles</div>
+                <div>With YouTube Learning Links</div>
             </div>
             <div class="stat-card">
-                <div style="font-size: 2.5rem; margin-bottom: 10px; color: #000000 !important;">📚</div>
+                <div style="font-size: 2.5rem; margin-bottom: 10px;">📚</div>
                 <div class="stat-number">50+</div>
-                <div style="font-weight: 700; color: #000000 !important; font-size: 1.1rem;">Resources</div>
-                <div style="color: #000000 !important; font-size: 0.9rem; font-weight: 500;">Platforms & Tools</div>
+                <div>Resources</div>
+                <div>Platforms & Tools</div>
             </div>
             <div class="stat-card">
-                <div style="font-size: 2.5rem; margin-bottom: 10px; color: #000000 !important;">🚀</div>
+                <div style="font-size: 2.5rem; margin-bottom: 10px;">🚀</div>
                 <div class="stat-number">24/7</div>
-                <div style="font-weight: 700; color: #000000 !important; font-size: 1.1rem;">AI Support</div>
-                <div style="color: #000000 !important; font-size: 0.9rem; font-weight: 500;">Career Guidance</div>
+                <div>AI Support</div>
+                <div>Career Guidance</div>
             </div>
         </div>
         """)
@@ -2004,37 +1991,37 @@ def create_dashboard_tab(career_ai):
         # Quick Start
         gr.Markdown("""
         <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">⚡ Quick Start</h3>
-            <p style="color: #000000 !important; font-weight: 600 !important;">Get started with these essential features:</p>
+            <h3>⚡ Quick Start</h3>
+            <p>Get started with these essential features:</p>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 20px;">
-                <button onclick="document.querySelector('#role-tab button').click()" style="background: var(--primary-gradient); color: white; border: none; padding: 15px; border-radius: 10px; font-weight: 600; cursor: pointer; text-align: center;">
+                <button onclick="document.querySelector('#role-tab button').click()" class="quick-start-btn" style="background: var(--primary-gradient);">
                     🤖 Find Your Career Role
                 </button>
-                <button onclick="document.querySelector('#resume-tab button').click()" style="background: var(--secondary-gradient); color: white; border: none; padding: 15px; border-radius: 10px; font-weight: 600; cursor: pointer; text-align: center;">
+                <button onclick="document.querySelector('#resume-tab button').click()" class="quick-start-btn" style="background: var(--secondary-gradient);">
                     📊 Analyze Your Resume
                 </button>
-                <button onclick="document.querySelector('#roadmap-tab button').click()" style="background: var(--success-gradient); color: white; border: none; padding: 15px; border-radius: 10px; font-weight: 600; cursor: pointer; text-align: center;">
+                <button onclick="document.querySelector('#roadmap-tab button').click()" class="quick-start-btn" style="background: var(--success-gradient);">
                     🧭 Get Personalized Roadmap
                 </button>
-                <button onclick="document.querySelector('#interview-tab button').click()" style="background: var(--warning-gradient); color: white; border: none; padding: 15px; border-radius: 10px; font-weight: 600; cursor: pointer; text-align: center;">
+                <button onclick="document.querySelector('#interview-tab button').click()" class="quick-start-btn" style="background: var(--warning-gradient);">
                     🎤 Practice Mock Interviews
                 </button>
-                <button onclick="document.querySelector('#resources-tab button').click()" style="background: var(--danger-gradient); color: white; border: none; padding: 15px; border-radius: 10px; font-weight: 600; cursor: pointer; text-align: center;">
+                <button onclick="document.querySelector('#resources-tab button').click()" class="quick-start-btn" style="background: var(--danger-gradient);">
                     📚 Explore Resources
                 </button>
             </div>
         </div>
         """)
         
-        # Recent Activity - All text in black
+        # Recent Activity
         gr.Markdown("""
         <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">📈 Your Career Progress</h3>
+            <h3>📈 Your Career Progress</h3>
             <div class="progress-dashboard">
                 <div class="progress-bar-container">
                     <div class="progress-label">
-                        <span style="color: #000000 !important; font-weight: 700;">Skills Development</span>
-                        <span style="color: #000000 !important; font-weight: 700;">65%</span>
+                        <span>Skills Development</span>
+                        <span>65%</span>
                     </div>
                     <div class="progress-bar">
                         <div class="progress-fill" style="width: 65%;"></div>
@@ -2042,8 +2029,8 @@ def create_dashboard_tab(career_ai):
                 </div>
                 <div class="progress-bar-container">
                     <div class="progress-label">
-                        <span style="color: #000000 !important; font-weight: 700;">Resume Optimization</span>
-                        <span style="color: #000000 !important; font-weight: 700;">80%</span>
+                        <span>Resume Optimization</span>
+                        <span>80%</span>
                     </div>
                     <div class="progress-bar">
                         <div class="progress-fill" style="width: 80%;"></div>
@@ -2051,8 +2038,8 @@ def create_dashboard_tab(career_ai):
                 </div>
                 <div class="progress-bar-container">
                     <div class="progress-label">
-                        <span style="color: #000000 !important; font-weight: 700;">Interview Readiness</span>
-                        <span style="color: #000000 !important; font-weight: 700;">45%</span>
+                        <span>Interview Readiness</span>
+                        <span>45%</span>
                     </div>
                     <div class="progress-bar">
                         <div class="progress-fill" style="width: 45%;"></div>
@@ -2060,8 +2047,8 @@ def create_dashboard_tab(career_ai):
                 </div>
                 <div class="progress-bar-container">
                     <div class="progress-label">
-                        <span style="color: #000000 !important; font-weight: 700;">Placement Readiness</span>
-                        <span style="color: #000000 !important; font-weight: 700;">70%</span>
+                        <span>Placement Readiness</span>
+                        <span>70%</span>
                     </div>
                     <div class="progress-bar">
                         <div class="progress-fill" style="width: 70%;"></div>
@@ -2075,8 +2062,8 @@ def create_role_suggester_tab(career_ai):
     with gr.Column():
         gr.Markdown("""
         <div class="feature-card">
-            <h2 style="color: #000000 !important; font-weight: 800 !important;">🤖 AI-Powered Career Role Suggester</h2>
-            <p style="color: #000000 !important; font-weight: 600 !important;">Get personalized career role recommendations based on your profile</p>
+            <h2>🤖 AI-Powered Career Role Suggester</h2>
+            <p>Get personalized career role recommendations based on your profile</p>
         </div>
         """)
         
@@ -2118,7 +2105,7 @@ def create_role_suggester_tab(career_ai):
         # Display career roles with YouTube links
         gr.Markdown("""
         <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">🌟 Popular Career Roles with YouTube Learning Links</h3>
+            <h3>🌟 Popular Career Roles with YouTube Learning Links</h3>
         </div>
         """)
         
@@ -2126,7 +2113,7 @@ def create_role_suggester_tab(career_ai):
         for role_name, role_data in career_data.career_roles.items():
             youtube_links = ""
             if "youtube_links" in role_data and role_data["youtube_links"]:
-                youtube_links = "<div style='margin-top: 10px;'><strong style='color: #000000 !important; font-weight: 700;'>🎬 YouTube Learning:</strong><br>"
+                youtube_links = "<div style='margin-top: 10px;'><strong>🎬 YouTube Learning:</strong><br>"
                 for i, link in enumerate(role_data["youtube_links"][:2]):
                     youtube_links += f"""<a href='{link}' target='_blank' class='youtube-link'>
                     <i>▶️</i> Video {i+1}
@@ -2138,17 +2125,17 @@ def create_role_suggester_tab(career_ai):
                 <div class="role-header">
                     <div class="role-icon">{role_data.get('logo', '💼')}</div>
                     <div>
-                        <h4 style="color: #000000 !important; font-weight: 700 !important;">{role_name}</h4>
+                        <h4>{role_name}</h4>
                         <div style="color: #10b981; font-weight: 600;">{role_data.get('salary', role_data.get('salary_range', 'Not specified'))}</div>
                     </div>
                 </div>
-                <p style="color: #000000 !important; margin: 10px 0; font-weight: 500 !important;">{role_data.get('description', '')}</p>
+                <p>{role_data.get('description', '')}</p>
                 <div style="margin: 15px 0;">
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 6px; font-weight: 600;">SKILLS NEEDED:</div>
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">SKILLS NEEDED:</div>
                     <div>{" ".join([f"<span class='skill-badge'>{skill}</span>" for skill in role_data.get('skills', [])[:4]])}</div>
                 </div>
                 <div style="margin: 10px 0;">
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 6px; font-weight: 600;">EXPERIENCE:</div>
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">EXPERIENCE:</div>
                     <span class="badge">{role_data.get('experience', 'Not specified')}</span>
                 </div>
                 {youtube_links}
@@ -2187,8 +2174,8 @@ def create_roadmap_generator_tab(career_ai):
     with gr.Column():
         gr.Markdown("""
         <div class="feature-card">
-            <h2 style="color: #000000 !important; font-weight: 800 !important;">🧭 Personalized Career Roadmap Generator</h2>
-            <p style="color: #000000 !important; font-weight: 600 !important;">Get a month-by-month roadmap tailored to your career goals</p>
+            <h2>🧭 Personalized Career Roadmap Generator</h2>
+            <p>Get a month-by-month roadmap tailored to your career goals</p>
         </div>
         """)
         
@@ -2253,8 +2240,8 @@ def create_resume_analyzer_tab(career_ai):
     with gr.Column():
         gr.Markdown("""
         <div class="feature-card">
-            <h2 style="color: #000000 !important; font-weight: 800 !important;">📊 AI Resume Analyzer & Builder</h2>
-            <p style="color: #000000 !important; font-weight: 600 !important;">Get ATS-optimized resume analysis with keyword gap detection</p>
+            <h2>📊 AI Resume Analyzer & Builder</h2>
+            <p>Get ATS-optimized resume analysis with keyword gap detection</p>
         </div>
         """)
         
@@ -2311,8 +2298,8 @@ def create_skill_gap_tab(career_ai):
     with gr.Column():
         gr.Markdown("""
         <div class="feature-card">
-            <h2 style="color: #000000 !important; font-weight: 800 !important;">📈 Skill Gap Analyzer</h2>
-            <p style="color: #000000 !important; font-weight: 600 !important;">Identify gaps between your current skills and industry requirements</p>
+            <h2>📈 Skill Gap Analyzer</h2>
+            <p>Identify gaps between your current skills and industry requirements</p>
         </div>
         """)
         
@@ -2342,7 +2329,7 @@ def create_skill_gap_tab(career_ai):
         # Industry Skills Display
         gr.Markdown("""
         <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">🏢 Industry Skill Requirements</h3>
+            <h3>🏢 Industry Skill Requirements</h3>
         </div>
         """)
         
@@ -2350,13 +2337,13 @@ def create_skill_gap_tab(career_ai):
         for domain, skills_dict in career_data.industry_skills.items():
             html += f"""
             <div style="background: white; border-radius: 15px; padding: 20px; margin: 15px 0; box-shadow: 0 5px 15px rgba(0,0,0,0.05);">
-                <h4 style="margin: 0 0 15px 0; color: #000000 !important; font-weight: 700 !important;">{domain}</h4>
+                <h4 style="margin: 0 0 15px 0;">{domain}</h4>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
             """
             for skill_type, skills in skills_dict.items():
                 html += f"""
                 <div>
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 8px; font-weight: 600; text-transform: uppercase;">{skill_type.replace('_', ' ').title()}</div>
+                    <div style="font-size: 12px; margin-bottom: 8px; font-weight: 600; text-transform: uppercase;">{skill_type.replace('_', ' ').title()}</div>
                     <div>{" ".join([f"<span class='skill-badge'>{skill}</span>" for skill in skills[:5]])}</div>
                 </div>
                 """
@@ -2390,8 +2377,8 @@ def create_placement_score_tab(career_ai):
     with gr.Column():
         gr.Markdown("""
         <div class="feature-card">
-            <h2 style="color: #000000 !important; font-weight: 800 !important;">🚀 Placement Readiness Score (0-100)</h2>
-            <p style="color: #000000 !important; font-weight: 600 !important;">Calculate your placement readiness with detailed breakdown</p>
+            <h2>🚀 Placement Readiness Score (0-100)</h2>
+            <p>Calculate your placement readiness with detailed breakdown</p>
         </div>
         """)
         
@@ -2473,8 +2460,8 @@ def create_mock_interview_tab(career_ai):
     with gr.Column():
         gr.Markdown("""
         <div class="feature-card">
-            <h2 style="color: #000000 !important; font-weight: 800 !important;">🎤 AI Mock Interview System</h2>
-            <p style="color: #000000 !important; font-weight: 600 !important;">Practice role-based interviews with AI evaluation</p>
+            <h2>🎤 AI Mock Interview System</h2>
+            <p>Practice role-based interviews with AI evaluation</p>
         </div>
         """)
         
@@ -2513,7 +2500,7 @@ def create_mock_interview_tab(career_ai):
         # Interview Answer Evaluation
         gr.Markdown("""
         <div class="feature-card" style="margin-top: 30px;">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">📊 Answer Evaluation</h3>
+            <h3>📊 Answer Evaluation</h3>
         </div>
         """)
         
@@ -2592,8 +2579,8 @@ def create_hackathon_project_tab(career_ai):
     with gr.Column():
         gr.Markdown("""
         <div class="feature-card">
-            <h2 style="color: #000000 !important; font-weight: 800 !important;">🏆 Hackathon & Project Recommendation Engine</h2>
-            <p style="color: #000000 !important; font-weight: 600 !important;">Get personalized hackathon and project recommendations</p>
+            <h2>🏆 Hackathon & Project Recommendation Engine</h2>
+            <p>Get personalized hackathon and project recommendations</p>
         </div>
         """)
         
@@ -2650,12 +2637,60 @@ def create_hackathon_project_tab(career_ai):
             outputs=[hp_output]
         )
 
+def create_coding_platforms_tab():
+    with gr.Column():
+        gr.Markdown("""
+        <div class="feature-card">
+            <h2>💻 Top Coding Practice Platforms</h2>
+            <p>Master coding skills through these top platforms for DSA, competitive programming, and interview prep</p>
+        </div>
+        """)
+        
+        # Coding platforms in a grid
+        html = "<div class='role-grid'>"
+        for platform in career_data.coding_platforms:
+            html += f"""
+            <div class="role-card">
+                <div class="role-header">
+                    <div class="role-icon">{platform['logo']}</div>
+                    <div>
+                        <h4>{platform['name']}</h4>
+                        <div style="color: #10b981; font-weight: 600;">{platform['rating']}</div>
+                    </div>
+                </div>
+                <p>{platform['description']}</p>
+                <div style="margin: 15px 0;">
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">FEATURES:</div>
+                    <div style="font-size: 14px;">{" • ".join(platform['features'][:2])}</div>
+                </div>
+                <div style="margin: 10px 0;">
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">BEST FOR:</div>
+                    <div>{" ".join([f"<span class='skill-badge'>{bf}</span>" for bf in platform['best_for'][:2]])}</div>
+                </div>
+                <div style="margin: 10px 0;">
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">DIFFICULTY:</div>
+                    <div>{" ".join([f"<span class='platform-badge'>{d}</span>" for d in platform['difficulty'][:2]])}</div>
+                </div>
+                <div style="margin: 10px 0;">
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">PRICING:</div>
+                    <span class="badge" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">{platform['pricing']}</span>
+                </div>
+                <a href="{platform['url']}" target="_blank">
+                    <button class="platform-btn" style="background: linear-gradient(135deg, #667eea, #764ba2);">
+                        Visit Platform →
+                    </button>
+                </a>
+            </div>
+            """
+        html += "</div>"
+        gr.HTML(html)
+
 def create_progress_tracker_tab(career_ai):
     with gr.Column():
         gr.Markdown("""
         <div class="feature-card">
-            <h2 style="color: #000000 !important; font-weight: 800 !important;">📊 Learning Progress Dashboard</h2>
-            <p style="color: #000000 !important; font-weight: 600 !important;">Track your career development progress</p>
+            <h2>📊 Learning Progress Dashboard</h2>
+            <p>Track your career development progress</p>
         </div>
         """)
         
@@ -2701,15 +2736,15 @@ def create_progress_tracker_tab(career_ai):
                     interactive=False
                 )
         
-        # Progress Visualization - All text in black
+        # Progress Visualization
         gr.Markdown("""
         <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">📈 Progress Visualization</h3>
+            <h3>📈 Progress Visualization</h3>
             <div class="progress-dashboard">
                 <div class="progress-bar-container">
                     <div class="progress-label">
-                        <span style="color: #000000 !important; font-weight: 700;">Skills Development</span>
-                        <span style="color: #000000 !important; font-weight: 700;">0%</span>
+                        <span>Skills Development</span>
+                        <span>0%</span>
                     </div>
                     <div class="progress-bar">
                         <div class="progress-fill" style="width: 0%;"></div>
@@ -2717,8 +2752,8 @@ def create_progress_tracker_tab(career_ai):
                 </div>
                 <div class="progress-bar-container">
                     <div class="progress-label">
-                        <span style="color: #000000 !important; font-weight: 700;">Project Completion</span>
-                        <span style="color: #000000 !important; font-weight: 700;">0%</span>
+                        <span>Project Completion</span>
+                        <span>0%</span>
                     </div>
                     <div class="progress-bar">
                         <div class="progress-fill" style="width: 0%;"></div>
@@ -2726,8 +2761,8 @@ def create_progress_tracker_tab(career_ai):
                 </div>
                 <div class="progress-bar-container">
                     <div class="progress-label">
-                        <span style="color: #000000 !important; font-weight: 700;">Certification Goals</span>
-                        <span style="color: #000000 !important; font-weight: 700;">0%</span>
+                        <span>Certification Goals</span>
+                        <span>0%</span>
                     </div>
                     <div class="progress-bar">
                         <div class="progress-fill" style="width: 0%;"></div>
@@ -2735,8 +2770,8 @@ def create_progress_tracker_tab(career_ai):
                 </div>
                 <div class="progress-bar-container">
                     <div class="progress-label">
-                        <span style="color: #000000 !important; font-weight: 700;">Job Search Progress</span>
-                        <span style="color: #000000 !important; font-weight: 700;">0%</span>
+                        <span>Job Search Progress</span>
+                        <span>0%</span>
                     </div>
                     <div class="progress-bar">
                         <div class="progress-fill" style="width: 0%;"></div>
@@ -2788,37 +2823,12 @@ def create_career_chatbot_tab(career_ai, conversation_history):
     with gr.Column():
         gr.Markdown("""
         <div class="feature-card">
-            <h2 style="color: #000000 !important; font-weight: 800 !important;">💬 AI Career Mentor with Voice Mode</h2>
-            <p style="color: #000000 !important; font-weight: 600 !important;">Get 24/7 career guidance from AI mentor using text or voice</p>
+            <h2>💬 AI Career Mentor with Voice Mode</h2>
+            <p>Get 24/7 career guidance from AI mentor using text or voice</p>
         </div>
         """)
         
-        # Voice Mode Section
-        with gr.Row():
-            with gr.Column():
-                gr.Markdown("""
-                <div class="voice-mode-container">
-                    <h3 style="color: #000000 !important; text-align: center; font-weight: 700 !important;">🎤 Voice Mode</h3>
-                    <p style="color: #000000 !important; text-align: center; font-weight: 600 !important;">Record your voice to ask questions (Supports English)</p>
-                </div>
-                """)
-                
-                with gr.Row():
-                    audio_input = gr.Audio(
-                        label="Record your voice",
-                        sources=["microphone"],
-                        type="numpy",
-                        elem_classes="audio-input"
-                    )
-                    
-                    voice_status = gr.Textbox(
-                        label="Voice Status",
-                        value="Click record button and speak your question",
-                        interactive=False,
-                        elem_classes="voice-status"
-                    )
-        
-        # Chatbot
+        # Chatbot Interface
         chatbot = gr.Chatbot(
             label=None,
             height=400,
@@ -2826,9 +2836,34 @@ def create_career_chatbot_tab(career_ai, conversation_history):
             show_label=False
         )
         
+        # Voice Input Section
+        gr.Markdown("""
+        <div class="voice-mode-container">
+            <h4>🎤 Voice Input Mode</h4>
+            <p>Click the microphone button to speak your question</p>
+        </div>
+        """)
+        
+        # Voice Recording Interface
+        with gr.Row():
+            audio_input = gr.Audio(
+                sources=["microphone"],
+                type="numpy",
+                label="Record your voice",
+                show_label=False
+            )
+            
+            voice_status = gr.Textbox(
+                label="Voice Recognition Status",
+                value="🔴 Click the microphone icon above to start recording",
+                interactive=False,
+                show_label=False
+            )
+        
+        # Text Input Interface
         with gr.Row():
             msg = gr.Textbox(
-                placeholder="Type your career question here or use voice mode above...",
+                placeholder="Type your career question here or use voice input above...",
                 show_label=False,
                 scale=4,
                 container=False
@@ -2837,60 +2872,51 @@ def create_career_chatbot_tab(career_ai, conversation_history):
         
         clear_btn = gr.Button("Clear Chat", variant="secondary")
         
-        def process_audio(audio_data, chat_history):
-            """Process audio input and convert to text"""
-            if audio_data is None:
-                return chat_history, "", "No audio recorded"
+        # Voice processing function
+        def process_voice(audio):
+            if audio is None:
+                return "", "❌ No audio detected. Please try again."
+            
+            if career_ai[0] is None:
+                return "", "❌ Please configure Gemini API key first"
             
             try:
-                # Get sample rate and audio data
-                sr_value = 44100  # Default sample rate
-                audio_array = audio_data[1] if isinstance(audio_data, tuple) else audio_data
+                # Get audio data
+                sample_rate, audio_data = audio
                 
-                # Convert audio data to bytes
+                # Convert to bytes
                 import io
                 import wave
                 
-                # Create a thread-safe queue for status updates
-                status_queue = queue.Queue()
+                # Create a BytesIO object
+                audio_bytes = io.BytesIO()
                 
-                # Start speech recognition in a thread
-                thread = threading.Thread(
-                    target=speech_recognition_worker,
-                    args=(audio_array.tobytes(), status_queue)
-                )
-                thread.daemon = True
-                thread.start()
-                thread.join(timeout=10)  # Wait for 10 seconds max
+                # Write audio data as WAV file
+                with wave.open(audio_bytes, 'wb') as wav_file:
+                    wav_file.setnchannels(1)  # Mono
+                    wav_file.setsampwidth(2)  # 16-bit
+                    wav_file.setframerate(sample_rate)
+                    
+                    # Convert to bytes
+                    if audio_data.dtype == np.float32:
+                        audio_data = (audio_data * 32767).astype(np.int16)
+                    elif audio_data.dtype == np.float64:
+                        audio_data = (audio_data * 32767).astype(np.int16)
+                    
+                    wav_file.writeframes(audio_data.tobytes())
                 
-                if thread.is_alive():
-                    return chat_history, "", "Speech recognition timed out"
+                # Get audio bytes
+                audio_bytes.seek(0)
+                audio_data_bytes = audio_bytes.read()
                 
-                # Check status
-                if not status_queue.empty():
-                    status, result = status_queue.get()
-                    if status == "success":
-                        # Add voice message to chat
-                        chat_history.append({"role": "user", "content": f"🎤 [Voice Message]: {result}"})
-                        
-                        if career_ai[0] is None:
-                            chat_history.append({"role": "assistant", "content": "Please configure Gemini API key first to use the AI mentor."})
-                            return chat_history, result, "Voice recognized"
-                        
-                        # Get AI response
-                        conv_history = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history[-10:]])
-                        response = career_ai[0].career_chatbot(result, conv_history)
-                        chat_history.append({"role": "assistant", "content": response})
-                        
-                        return chat_history, result, "Voice message processed successfully"
-                    else:
-                        return chat_history, "", f"Error: {result}"
-                
-                return chat_history, "", "Processing completed"
+                # Process voice input
+                text, status = career_ai[0].process_voice_input(audio_data_bytes)
+                return text, status
                 
             except Exception as e:
-                return chat_history, "", f"Error processing audio: {str(e)}"
+                return "", f"❌ Error processing voice: {str(e)}"
         
+        # Text response function
         def respond(message, chat_history):
             if not message.strip():
                 return chat_history, ""
@@ -2923,12 +2949,14 @@ def create_career_chatbot_tab(career_ai, conversation_history):
             conversation_history[0] = ""
             return []
         
-        # Audio input processing
-        audio_input.stop_recording(
-            process_audio,
-            inputs=[audio_input, chatbot],
-            outputs=[chatbot, msg, voice_status]
-        )
+        # Voice input processing
+        def process_voice_and_update(audio, chat_history):
+            text, status = process_voice(audio)
+            if text:
+                # Update the message box with recognized text
+                chat_history, _ = respond(text, chat_history)
+                return chat_history, text, status
+            return chat_history, "", status
         
         # Text input processing
         msg.submit(
@@ -2943,6 +2971,13 @@ def create_career_chatbot_tab(career_ai, conversation_history):
             outputs=[chatbot, msg]
         )
         
+        # Voice input processing
+        audio_input.stop_recording(
+            process_voice_and_update,
+            inputs=[audio_input, chatbot],
+            outputs=[chatbot, msg, voice_status]
+        )
+        
         clear_btn.click(
             clear_chat,
             None,
@@ -2953,15 +2988,15 @@ def create_career_resources_tab():
     with gr.Column():
         gr.Markdown("""
         <div class="feature-card">
-            <h2 style="color: #000000 !important; font-weight: 800 !important;">📚 Complete Career Resources</h2>
-            <p style="color: #000000 !important; font-weight: 600 !important;">Everything you need for career success in one place</p>
+            <h2>📚 Complete Career Resources</h2>
+            <p>Everything you need for career success in one place</p>
         </div>
         """)
         
         # Free Certification Platforms
         gr.Markdown("""
         <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">🎓 Top Free Certification Platforms</h3>
+            <h3>🎓 Top Free Certification Platforms</h3>
         </div>
         """)
         
@@ -2972,162 +3007,22 @@ def create_career_resources_tab():
                 <div class="role-header">
                     <div class="role-icon">📜</div>
                     <div>
-                        <h4 style="color: #000000 !important; font-weight: 700 !important;">{platform_name}</h4>
+                        <h4>{platform_name}</h4>
                         <div style="color: #10b981; font-weight: 600;">{platform_data['free_certificates']}</div>
                     </div>
                 </div>
-                <p style="color: #000000 !important; margin: 10px 0; font-weight: 500 !important;">{platform_data['description']}</p>
+                <p>{platform_data['description']}</p>
                 <div style="margin: 15px 0;">
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 6px; font-weight: 600;">BEST FOR:</div>
-                    <div style="font-size: 14px; color: #475569; font-weight: 500 !important;">{platform_data['best_for']}</div>
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">BEST FOR:</div>
+                    <div style="font-size: 14px;">{platform_data['best_for']}</div>
                 </div>
                 <div style="margin: 10px 0;">
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 6px; font-weight: 600;">TOPICS:</div>
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">TOPICS:</div>
                     <div>{" ".join([f"<span class='platform-badge'>{topic}</span>" for topic in platform_data.get('topics', [])[:3]])}</div>
                 </div>
                 <a href="{platform_data['url']}" target="_blank">
-                    <button style="width: 100%; padding: 12px; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; margin-top: 10px;">
+                    <button class="platform-btn" style="background: linear-gradient(135deg, #10b981, #059669);">
                         Visit Platform →
-                    </button>
-                </a>
-            </div>
-            """
-        html += "</div>"
-        gr.HTML(html)
-        
-        # Job Platforms
-        gr.Markdown("""
-        <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">💼 Top Job Applying Platforms</h3>
-        </div>
-        """)
-        
-        html = "<div class='role-grid'>"
-        for platform in career_data.job_platforms:
-            html += f"""
-            <div class="role-card">
-                <div class="role-header">
-                    <div class="role-icon">{platform['logo']}</div>
-                    <div>
-                        <h4 style="color: #000000 !important; font-weight: 700 !important;">{platform['name']}</h4>
-                        <div style="color: #f59e0b; font-weight: 600;">{platform['rating']}</div>
-                    </div>
-                </div>
-                <p style="color: #000000 !important; margin: 10px 0; font-weight: 500 !important;">{platform['description']}</p>
-                <div style="margin: 15px 0;">
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 6px; font-weight: 600;">FEATURES:</div>
-                    <div style="font-size: 14px; color: #475569; font-weight: 500 !important;">{" • ".join(platform['features'])}</div>
-                </div>
-                <div style="margin: 10px 0;">
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 6px; font-weight: 600;">BEST FOR:</div>
-                    <div>{" ".join([f"<span class='platform-badge'>{bf}</span>" for bf in platform['best_for']])}</div>
-                </div>
-                <a href="{platform['url']}" target="_blank">
-                    <button style="width: 100%; padding: 12px; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; margin-top: 10px;">
-                        Visit Platform →
-                    </button>
-                </a>
-            </div>
-            """
-        html += "</div>"
-        gr.HTML(html)
-        
-        # Resume Builders
-        gr.Markdown("""
-        <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">📝 Top Resume Builders</h3>
-        </div>
-        """)
-        
-        html = "<div class='role-grid'>"
-        for builder in career_data.resume_builders:
-            html += f"""
-            <div class="role-card">
-                <div class="role-header">
-                    <div class="role-icon">{builder['logo']}</div>
-                    <div>
-                        <h4 style="color: #000000 !important; font-weight: 700 !important;">{builder['name']}</h4>
-                        <div style="color: #8b5cf6; font-weight: 600;">ATS: {builder['ats_friendly']}</div>
-                    </div>
-                </div>
-                <p style="color: #000000 !important; margin: 10px 0; font-weight: 500 !important;">{builder['description']}</p>
-                <div style="margin: 15px 0;">
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 6px; font-weight: 600;">BEST FOR:</div>
-                    <div style="font-size: 14px; color: #475569; font-weight: 500 !important;">{builder['best_for']}</div>
-                </div>
-                <div style="margin: 10px 0;">
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 6px; font-weight: 600;">FEATURES:</div>
-                    <div style="font-size: 14px; color: #475569; font-weight: 500 !important;">{" • ".join(builder['features'][:2])}</div>
-                </div>
-                <a href="{builder['url']}" target="_blank">
-                    <button style="width: 100%; padding: 12px; background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; margin-top: 10px;">
-                        Visit Builder →
-                    </button>
-                </a>
-            </div>
-            """
-        html += "</div>"
-        gr.HTML(html)
-        
-        # ATS Resume Score Evaluators
-        gr.Markdown("""
-        <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">🔍 Top ATS Resume Score Evaluating Platforms</h3>
-        </div>
-        """)
-        
-        html = "<div class='role-grid'>"
-        for evaluator in career_data.ats_evaluators:
-            html += f"""
-            <div class="role-card">
-                <div class="role-header">
-                    <div class="role-icon">{evaluator['logo']}</div>
-                    <div>
-                        <h4 style="color: #000000 !important; font-weight: 700 !important;">{evaluator['name']}</h4>
-                        <div style="color: #ec4899; font-weight: 600;">{evaluator['rating']}</div>
-                    </div>
-                </div>
-                <p style="color: #000000 !important; margin: 10px 0; font-weight: 500 !important;">{evaluator['description']}</p>
-                <div style="margin: 15px 0;">
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 6px; font-weight: 600;">FEATURES:</div>
-                    <div style="font-size: 14px; color: #475569; font-weight: 500 !important;">{" • ".join(evaluator['features'])}</div>
-                </div>
-                <a href="{evaluator['url']}" target="_blank">
-                    <button style="width: 100%; padding: 12px; background: linear-gradient(135deg, #ec4899, #db2777); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; margin-top: 10px;">
-                        Check Score →
-                    </button>
-                </a>
-            </div>
-            """
-        html += "</div>"
-        gr.HTML(html)
-        
-        # Free Internship Platforms
-        gr.Markdown("""
-        <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">🏆 Top Free Internship Platforms</h3>
-        </div>
-        """)
-        
-        html = "<div class='role-grid'>"
-        for platform in career_data.internship_platforms:
-            html += f"""
-            <div class="role-card">
-                <div class="role-header">
-                    <div class="role-icon">{platform['logo']}</div>
-                    <div>
-                        <h4 style="color: #000000 !important; font-weight: 700 !important;">{platform['name']}</h4>
-                        <div style="color: #06b6d4; font-weight: 600;">{platform['rating']}</div>
-                    </div>
-                </div>
-                <p style="color: #000000 !important; margin: 10px 0; font-weight: 500 !important;">{platform['description']}</p>
-                <div style="margin: 15px 0;">
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 6px; font-weight: 600;">FEATURES:</div>
-                    <div style="font-size: 14px; color: #475569; font-weight: 500 !important;">{" • ".join(platform['features'])}</div>
-                </div>
-                <a href="{platform['url']}" target="_blank">
-                    <button style="width: 100%; padding: 12px; background: linear-gradient(135deg, #06b6d4, #0891b2); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; margin-top: 10px;">
-                        Find Internships →
                     </button>
                 </a>
             </div>
@@ -3139,15 +3034,200 @@ def create_unified_resources_tab():
     with gr.Column():
         gr.Markdown("""
         <div class="feature-card">
-            <h2 style="color: #000000 !important; font-weight: 800 !important;">🌐 Unified Career Ecosystem</h2>
-            <p style="color: #000000 !important; font-weight: 600 !important;">All career resources in one place - No more switching between websites</p>
+            <h2>🌐 Unified Career Ecosystem</h2>
+            <p>All career resources in one place - No more switching between websites</p>
         </div>
         """)
+        
+        # All Resources Summary
+        gr.Markdown("""
+        <div class="feature-card">
+            <h3>📚 All Resource Categories</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-top: 20px;">
+                <div style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); padding: 20px; border-radius: 15px;">
+                    <h4>💻 Coding Practice</h4>
+                    <p>8 platforms for DSA, competitive programming, interview prep</p>
+                </div>
+                <div style="background: linear-gradient(135deg, rgba(240, 147, 251, 0.1), rgba(245, 87, 108, 0.1)); padding: 20px; border-radius: 15px;">
+                    <h4>🏆 Hackathons</h4>
+                    <p>5 platforms for competitions, prizes, networking</p>
+                </div>
+                <div style="background: linear-gradient(135deg, rgba(79, 172, 254, 0.1), rgba(0, 242, 254, 0.1)); padding: 20px; border-radius: 15px;">
+                    <h4>📜 Certifications</h4>
+                    <p>7 platforms for free certificates & learning paths</p>
+                </div>
+                <div style="background: linear-gradient(135deg, rgba(246, 211, 101, 0.1), rgba(253, 160, 133, 0.1)); padding: 20px; border-radius: 15px;">
+                    <h4>📝 Resume Builders</h4>
+                    <p>5 ATS-friendly resume builders</p>
+                </div>
+                <div style="background: linear-gradient(135deg, rgba(255, 154, 158, 0.1), rgba(250, 208, 196, 0.1)); padding: 20px; border-radius: 15px;">
+                    <h4>💼 Job Platforms</h4>
+                    <p>10 top job applying platforms with ratings</p>
+                </div>
+                <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1)); padding: 20px; border-radius: 15px;">
+                    <h4>🔍 ATS Evaluators</h4>
+                    <p>5 platforms to check resume ATS score</p>
+                </div>
+                <div style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(124, 58, 237, 0.1)); padding: 20px; border-radius: 15px;">
+                    <h4>🏆 Internships</h4>
+                    <p>5 free internship platforms for students</p>
+                </div>
+                <div style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.1), rgba(219, 39, 119, 0.1)); padding: 20px; border-radius: 15px;">
+                    <h4>🎬 YouTube Learning</h4>
+                    <p>20+ career roles with YouTube learning links</p>
+                </div>
+            </div>
+        </div>
+        """)
+        
+        # Job Platforms Section
+        gr.Markdown("""
+        <div class="feature-card">
+            <h3>💼 Job Platforms</h3>
+            <p>Job applying platforms with ratings & features</p>
+        </div>
+        """)
+        
+        html = "<div class='role-grid'>"
+        for platform in career_data.job_platforms:
+            html += f"""
+            <div class="role-card">
+                <div class="role-header">
+                    <div class="role-icon">{platform['logo']}</div>
+                    <div>
+                        <h4>{platform['name']}</h4>
+                        <div style="color: #f59e0b; font-weight: 600;">{platform['rating']}</div>
+                    </div>
+                </div>
+                <p>{platform['description']}</p>
+                <div style="margin: 15px 0;">
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">FEATURES:</div>
+                    <div style="font-size: 14px;">{" • ".join(platform['features'])}</div>
+                </div>
+                <div style="margin: 10px 0;">
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">BEST FOR:</div>
+                    <div>{" ".join([f"<span class='platform-badge'>{bf}</span>" for bf in platform['best_for']])}</div>
+                </div>
+                <a href="{platform['url']}" target="_blank">
+                    <button class="platform-btn" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                        Visit Platform →
+                    </button>
+                </a>
+            </div>
+            """
+        html += "</div>"
+        gr.HTML(html)
+        
+        # Resume Builders Section
+        gr.Markdown("""
+        <div class="feature-card">
+            <h3>📝 Resume Builders</h3>
+            <p>ATS-friendly resume builders</p>
+        </div>
+        """)
+        
+        html = "<div class='role-grid'>"
+        for builder in career_data.resume_builders:
+            html += f"""
+            <div class="role-card">
+                <div class="role-header">
+                    <div class="role-icon">{builder['logo']}</div>
+                    <div>
+                        <h4>{builder['name']}</h4>
+                        <div style="color: #8b5cf6; font-weight: 600;">ATS: {builder['ats_friendly']}</div>
+                    </div>
+                </div>
+                <p>{builder['description']}</p>
+                <div style="margin: 15px 0;">
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">BEST FOR:</div>
+                    <div style="font-size: 14px;">{builder['best_for']}</div>
+                </div>
+                <div style="margin: 10px 0;">
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">FEATURES:</div>
+                    <div style="font-size: 14px;">{" • ".join(builder['features'][:2])}</div>
+                </div>
+                <a href="{builder['url']}" target="_blank">
+                    <button class="platform-btn" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
+                        Visit Builder →
+                    </button>
+                </a>
+            </div>
+            """
+        html += "</div>"
+        gr.HTML(html)
+        
+        # ATS Resume Score Evaluators Section
+        gr.Markdown("""
+        <div class="feature-card">
+            <h3>🔍 ATS Resume Score Evaluating Platforms</h3>
+            <p>Platforms to check your resume ATS score</p>
+        </div>
+        """)
+        
+        html = "<div class='role-grid'>"
+        for evaluator in career_data.ats_evaluators:
+            html += f"""
+            <div class="role-card">
+                <div class="role-header">
+                    <div class="role-icon">{evaluator['logo']}</div>
+                    <div>
+                        <h4>{evaluator['name']}</h4>
+                        <div style="color: #ec4899; font-weight: 600;">{evaluator['rating']}</div>
+                    </div>
+                </div>
+                <p>{evaluator['description']}</p>
+                <div style="margin: 15px 0;">
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">FEATURES:</div>
+                    <div style="font-size: 14px;">{" • ".join(evaluator['features'])}</div>
+                </div>
+                <a href="{evaluator['url']}" target="_blank">
+                    <button class="platform-btn" style="background: linear-gradient(135deg, #ec4899, #db2777);">
+                        Check Score →
+                    </button>
+                </a>
+            </div>
+            """
+        html += "</div>"
+        gr.HTML(html)
+        
+        # Free Internship Platforms Section
+        gr.Markdown("""
+        <div class="feature-card">
+            <h3>🏆 Free Internship Platforms</h3>
+            <p>Free internship platforms for students</p>
+        </div>
+        """)
+        
+        html = "<div class='role-grid'>"
+        for platform in career_data.internship_platforms:
+            html += f"""
+            <div class="role-card">
+                <div class="role-header">
+                    <div class="role-icon">{platform['logo']}</div>
+                    <div>
+                        <h4>{platform['name']}</h4>
+                        <div style="color: #06b6d4; font-weight: 600;">{platform['rating']}</div>
+                    </div>
+                </div>
+                <p>{platform['description']}</p>
+                <div style="margin: 15px 0;">
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">FEATURES:</div>
+                    <div style="font-size: 14px;">{" • ".join(platform['features'])}</div>
+                </div>
+                <a href="{platform['url']}" target="_blank">
+                    <button class="platform-btn" style="background: linear-gradient(135deg, #06b6d4, #0891b2);">
+                        Find Internships →
+                    </button>
+                </a>
+            </div>
+            """
+        html += "</div>"
+        gr.HTML(html)
         
         # Coding Platforms
         gr.Markdown("""
         <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">💻 Coding Practice Platforms</h3>
+            <h3>💻 Coding Practice Platforms</h3>
         </div>
         """)
         
@@ -3158,17 +3238,17 @@ def create_unified_resources_tab():
                 <div class="role-header">
                     <div class="role-icon">{platform['logo']}</div>
                     <div>
-                        <h4 style="color: #000000 !important; font-weight: 700 !important;">{platform['name']}</h4>
+                        <h4>{platform['name']}</h4>
                         <div style="color: #10b981; font-weight: 600;">{platform['rating']}</div>
                     </div>
                 </div>
-                <p style="color: #000000 !important; margin: 10px 0; font-weight: 500 !important;">{platform['description']}</p>
+                <p>{platform['description']}</p>
                 <div style="margin: 15px 0;">
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 6px; font-weight: 600;">BEST FOR:</div>
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">BEST FOR:</div>
                     <div>{" ".join([f"<span class='skill-badge'>{bf}</span>" for bf in platform['best_for'][:2]])}</div>
                 </div>
                 <a href="{platform['url']}" target="_blank">
-                    <button style="width: 100%; padding: 12px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; margin-top: 10px;">
+                    <button class="platform-btn" style="background: linear-gradient(135deg, #667eea, #764ba2);">
                         Visit Platform →
                     </button>
                 </a>
@@ -3180,7 +3260,7 @@ def create_unified_resources_tab():
         # Hackathon Platforms
         gr.Markdown("""
         <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">🏆 Hackathon Platforms</h3>
+            <h3>🏆 Hackathon Platforms</h3>
         </div>
         """)
         
@@ -3191,17 +3271,17 @@ def create_unified_resources_tab():
                 <div class="role-header">
                     <div class="role-icon">{platform['logo']}</div>
                     <div>
-                        <h4 style="color: #000000 !important; font-weight: 700 !important;">{platform['name']}</h4>
+                        <h4>{platform['name']}</h4>
                         <div style="color: #f59e0b; font-weight: 600;">{platform['rating']}</div>
                     </div>
                 </div>
-                <p style="color: #000000 !important; margin: 10px 0; font-weight: 500 !important;">{platform['description']}</p>
+                <p>{platform['description']}</p>
                 <div style="margin: 15px 0;">
-                    <div style="font-size: 12px; color: #000000 !important; margin-bottom: 6px; font-weight: 600;">PRIZES:</div>
-                    <div style="font-size: 14px; color: #475569; font-weight: 500 !important;">{platform['prizes'][:80]}...</div>
+                    <div style="font-size: 12px; margin-bottom: 6px; font-weight: 600;">PRIZES:</div>
+                    <div style="font-size: 14px;">{platform['prizes'][:80]}...</div>
                 </div>
                 <a href="{platform['url']}" target="_blank">
-                    <button style="width: 100%; padding: 12px; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; margin-top: 10px;">
+                    <button class="platform-btn" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
                         Join Hackathons →
                     </button>
                 </a>
@@ -3209,47 +3289,6 @@ def create_unified_resources_tab():
             """
         html += "</div>"
         gr.HTML(html)
-        
-        # All Resources Summary
-        gr.Markdown("""
-        <div class="feature-card">
-            <h3 style="color: #000000 !important; font-weight: 800 !important;">📚 All Resource Categories</h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-top: 20px;">
-                <div style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1)); padding: 20px; border-radius: 15px;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">💻 Coding Practice</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">8 platforms for DSA, competitive programming, interview prep</p>
-                </div>
-                <div style="background: linear-gradient(135deg, rgba(240, 147, 251, 0.1), rgba(245, 87, 108, 0.1)); padding: 20px; border-radius: 15px;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">🏆 Hackathons</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">5 platforms for competitions, prizes, networking</p>
-                </div>
-                <div style="background: linear-gradient(135deg, rgba(79, 172, 254, 0.1), rgba(0, 242, 254, 0.1)); padding: 20px; border-radius: 15px;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">📜 Certifications</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">7 platforms for free certificates & learning paths</p>
-                </div>
-                <div style="background: linear-gradient(135deg, rgba(246, 211, 101, 0.1), rgba(253, 160, 133, 0.1)); padding: 20px; border-radius: 15px;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">📝 Resume Builders</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">5 ATS-friendly resume builders</p>
-                </div>
-                <div style="background: linear-gradient(135deg, rgba(255, 154, 158, 0.1), rgba(250, 208, 196, 0.1)); padding: 20px; border-radius: 15px;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">💼 Job Platforms</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">10 top job applying platforms with ratings</p>
-                </div>
-                <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.1)); padding: 20px; border-radius: 15px;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">🔍 ATS Evaluators</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">5 platforms to check resume ATS score</p>
-                </div>
-                <div style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(124, 58, 237, 0.1)); padding: 20px; border-radius: 15px;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">🏆 Internships</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">5 free internship platforms for students</p>
-                </div>
-                <div style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.1), rgba(219, 39, 119, 0.1)); padding: 20px; border-radius: 15px;">
-                    <h4 style="color: #000000 !important; font-weight: 700 !important;">🎬 YouTube Learning</h4>
-                    <p style="color: #000000 !important; font-weight: 500 !important;">20+ career roles with YouTube learning links</p>
-                </div>
-            </div>
-        </div>
-        """)
 
 # Run the application
 if __name__ == "__main__":
